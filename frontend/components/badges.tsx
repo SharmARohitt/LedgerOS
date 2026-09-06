@@ -37,9 +37,14 @@ export function StatusBadge({ status }: { status: string }) {
   return <span className={`badge ${STATUS_COLORS[status] ?? "text-gray-400"}`}>{status.replace(/_/g, " ")}</span>;
 }
 
+const MODE_COLORS: Record<string, string> = {
+  LIVE: "text-risk-low",
+  SANDBOX: "text-accent",
+  SIMULATED: "text-gray-500",
+  FALLBACK: "text-gray-500",
+};
+
 export function ModeTag({ mode }: { mode: string }) {
-  const isLive = mode === "LIVE";
-  return (
-    <span className={`badge ${isLive ? "text-accent" : "text-gray-500"}`}>{isLive ? "LIVE" : "SIMULATED"}</span>
-  );
+  const normalized = mode in MODE_COLORS ? mode : "SIMULATED";
+  return <span className={`badge ${MODE_COLORS[normalized]}`}>{normalized}</span>;
 }

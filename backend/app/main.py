@@ -8,13 +8,17 @@ from fastapi.responses import JSONResponse
 from app.api.v1.routes import (
     auth,
     dashboard,
+    decision_room,
     decisions,
     demo,
     events,
     exceptions,
+    financial_twin,
     health,
     investigations,
+    policies,
     proofs,
+    scenarios,
     traces,
     webhooks,
 )
@@ -81,3 +85,7 @@ app.include_router(traces.router, prefix=API_PREFIX)
 app.include_router(proofs.router, prefix=API_PREFIX)
 app.include_router(webhooks.router, prefix=API_PREFIX)
 app.include_router(demo.router, prefix=API_PREFIX)
+app.include_router(financial_twin.router, prefix=API_PREFIX)
+app.include_router(scenarios.router, prefix=API_PREFIX)
+app.include_router(decision_room.router, prefix=API_PREFIX)
+app.include_router(policies.router, prefix=API_PREFIX)

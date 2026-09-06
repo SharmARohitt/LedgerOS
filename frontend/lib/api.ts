@@ -35,6 +35,22 @@ export function getSession(): { token: string; role: string; name: string } | nu
   };
 }
 
+/**
+ * Fires once when a previously-authenticated request comes back 401 — i.e.
+ * we DID attach a bearer token and the backend rejected it (stale/invalid/
+ * expired), as opposed to a 401 from the login call itself (wrong password,
+ * nothing to clear). Session/redirect handling lives here, centrally, so
+ * every page benefits without each one re-implementing recovery.
+ */
+function handleStaleSession() {
+  if (typeof window === "undefined") return;
+  clearSession();
+  const next = window.location.pathname + window.location.search;
+  if (window.location.pathname !== "/login") {
+    window.location.href = `/login?reason=session_expired&next=${encodeURIComponent(next)}`;
+  }
+}
+
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const token = getToken();
   const headers: Record<string, string> = {
@@ -52,6 +68,17 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     } catch {
       // ignore
     }
+
+    if (res.status === 401 && token) {
+      // We sent a credential and the backend rejected it — the token itself
+      // is stale/invalid, not a login-time bad-password case. Never retry
+      // this same request with the same token (it will just 401 again);
+      // the only safe "retry" is the user re-authenticating and navigating
+      // back, which the redirect below sets up via the `next` param.
+      handleStaleSession();
+      throw new ApiError(401, "Your session has expired — please sign in again.");
+    }
+
     throw new ApiError(res.status, detail);
   }
   if (res.status === 204) return undefined as T;
@@ -64,6 +91,73 @@ export interface LoginResponse {
   access_token: string;
   role: string;
   name: string;
+}
+
+export interface LiquiditySnapshot {
+  available_cash: number;
+  expected_inflows_30d: number;
+  expected_outflows_30d: number;
+  net_30d_position: number;
+  runway_months: number | null;
+  minimum_reserve: number;
+  operational_buffer: number;
+}
+
+export interface CapitalMap {
+  total_capital: number;
+  operating_cash: number;
+  reserve: number;
+  expected_inflows: number;
+  committed_outflows: number;
+  deployable_capital: number;
+}
+
+export interface ObligationsBreakdown {
+  total_payable: number;
+  by_type: Record<string, number>;
+}
+
+export interface FinancialHealth {
+  liquidity_score: number;
+  collection_health: number;
+  spend_health: number;
+  vendor_concentration_score: number;
+  top_vendor: string | null;
+  forecast_confidence: number;
+}
+
+export interface DeploymentOpportunity {
+  rank: number;
+  category: string;
+  label: string;
+  amount: number;
+  liquidity_impact: string;
+  risk: string;
+  status: string;
+  reason: string;
+  projection_label: string;
+}
+
+export interface EarlyWarning {
+  signal: string;
+  severity: string;
+  evidence: string;
+  forecast_impact: number;
+  recommended_action: string;
+}
+
+export interface FinancialTwinSnapshot {
+  as_of: string;
+  policy_version: string | null;
+  cash: { operating_cash: number; reserve_cash: number; total_cash: number };
+  capital_map: CapitalMap;
+  liquidity: LiquiditySnapshot;
+  obligations: ObligationsBreakdown;
+  revenue: { accounts_receivable: number; overdue_receivable: number };
+  financial_health: FinancialHealth;
+  exceptions: { open_count: number; at_risk_capital: number };
+  deployment_opportunities: DeploymentOpportunity[];
+  early_warnings: EarlyWarning[];
 }
 
 export interface DashboardOverview {
@@ -79,6 +173,66 @@ export interface DashboardOverview {
   estimated_inference_cost: number;
   evidence_count: number;
   proofs_generated: number;
+  liquidity: LiquiditySnapshot;
+  capital: CapitalMap;
+  obligations: ObligationsBreakdown;
+  financial_health: FinancialHealth;
+}
+
+export interface ScenarioResult {
+  id?: string;
+  scenario_type: string;
+  params: Record<string, unknown>;
+  baseline: FinancialTwinSnapshot;
+  scenario: FinancialTwinSnapshot;
+  deltas: {
+    total_cash: number | null;
+    deployable_capital: number | null;
+    runway_months: number | null;
+    net_30d_position: number | null;
+    liquidity_score: number | null;
+  };
+  label: string;
+}
+
+export interface ScenarioSummary {
+  id: string;
+  scenario_type: string;
+  label: string;
+  params: Record<string, unknown>;
+  created_at: string;
+  deployable_capital_delta: number;
+}
+
+export interface DecisionRoomItem {
+  decision_id: string;
+  approval_id: string;
+  exception_id: string;
+  amount: number;
+  risk_level: string;
+  recommendation: string;
+  reason: string;
+  confidence: number;
+  policy_version: string | null;
+  evidence_count: number;
+  created_at: string;
+}
+
+export interface PolicyView {
+  id: string;
+  policy_key: string;
+  version: string;
+  policy_type: string;
+  status: string;
+  created_by: string;
+  effective_date: string;
+  description: string;
+  rules: Record<string, unknown>;
+}
+
+export interface AutonomyCapability {
+  capability: string;
+  allowed: boolean;
 }
 
 export interface ExceptionSummary {
@@ -215,4 +369,24 @@ export const api = {
 
   rejectDecision: (decisionId: string, note?: string) =>
     request<any>(`/decisions/${decisionId}/reject`, { method: "POST", body: JSON.stringify({ note }) }),
+
+  financialTwinOverview: () => request<FinancialTwinSnapshot>("/financial-twin/overview"),
+
+  listScenarios: () => request<{ items: ScenarioSummary[]; total: number }>("/scenarios"),
+
+  createScenario: (scenario_type: string, params: Record<string, unknown>, label?: string) =>
+    request<ScenarioResult & { id: string }>("/scenarios", {
+      method: "POST",
+      body: JSON.stringify({ scenario_type, params, label }),
+    }),
+
+  getScenario: (id: string) => request<ScenarioResult & { id: string; label_tag: string }>(`/scenarios/${id}`),
+
+  decisionRoom: () =>
+    request<{ pending_count: number; total_exposure: number; items: DecisionRoomItem[] }>("/decision-room"),
+
+  listPolicies: () => request<{ items: PolicyView[] }>("/policies"),
+
+  autonomyMatrix: () =>
+    request<{ capabilities: AutonomyCapability[]; principle: string }>("/policies/autonomy-matrix"),
 };

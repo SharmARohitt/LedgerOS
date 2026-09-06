@@ -4,6 +4,7 @@ from pathlib import Path
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
@@ -25,7 +26,12 @@ CASE01_POLICY_RULES = {
 
 @pytest.fixture()
 def db():
-    engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False})
+    # StaticPool: keeps every checkout on the SAME single connection. Without
+    # it, SQLAlchemy's default per-thread pool for sqlite:///:memory: hands a
+    # brand-new, tableless database to any other thread (e.g. FastAPI
+    # TestClient's request runs in a worker thread) than the one that ran
+    # create_all() here.
+    engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False}, poolclass=StaticPool)
     Base.metadata.create_all(engine)
     session_local = sessionmaker(bind=engine, autoflush=False, autocommit=False, future=True)
     session = session_local()

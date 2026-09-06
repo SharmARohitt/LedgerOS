@@ -28,6 +28,7 @@ class Invoice(Base, TimestampMixin):
     currency: Mapped[str] = mapped_column(String, nullable=False, default="USD")
     total_amount: Mapped[float] = mapped_column(Numeric(14, 2), nullable=False)
     status: Mapped[str] = mapped_column(String, nullable=False, default="OPEN")
+    due_date: Mapped[str | None] = mapped_column(String, nullable=True)  # ISO date, drives AR forecasting
 
     lines: Mapped[list["InvoiceLine"]] = relationship(back_populates="invoice")
     contract: Mapped["Contract"] = relationship()

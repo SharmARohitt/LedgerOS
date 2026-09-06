@@ -1,8 +1,15 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { api, ApiError, setSession } from "@/lib/api";
+
+function safeInternalPath(path: string | null): string {
+  // Only ever redirect back to a same-origin app path — never follow an
+  // arbitrary `next` value to an external URL.
+  if (!path || !path.startsWith("/") || path.startsWith("//")) return "/dashboard";
+  return path;
+}
 
 const QUICK_LOGINS = [
   { email: "cfo@ledgeros.dev", role: "CFO" },
@@ -12,11 +19,22 @@ const QUICK_LOGINS = [
 ];
 
 export default function LoginPage() {
+  return (
+    <Suspense fallback={null}>
+      <LoginForm />
+    </Suspense>
+  );
+}
+
+function LoginForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [email, setEmail] = useState("cfo@ledgeros.dev");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  const sessionExpired = searchParams.get("reason") === "session_expired";
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -25,7 +43,7 @@ export default function LoginPage() {
     try {
       const res = await api.login(email, password);
       setSession(res.access_token, res.role, res.name);
-      router.push("/dashboard");
+      router.push(safeInternalPath(searchParams.get("next")));
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Unable to reach LedgerOS API");
     } finally {
@@ -42,6 +60,12 @@ export default function LoginPage() {
           </div>
           <p className="mt-2 text-sm text-gray-500">The Autonomous Financial Control Plane</p>
         </div>
+
+        {sessionExpired && (
+          <div className="mb-4 panel p-3 text-sm text-risk-medium border-risk-medium/40">
+            Your session has expired. Please sign in again.
+          </div>
+        )}
 
         <form onSubmit={submit} className="panel p-6 space-y-4">
           <div>

@@ -17,6 +17,24 @@ function Metric({ label, value, sub }: { label: string; value: string; sub?: str
   );
 }
 
+function LineRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-center justify-between py-1.5 text-sm">
+      <span className="text-gray-400">{label}</span>
+      <span className="tabular font-medium">{value}</span>
+    </div>
+  );
+}
+
+function Panel({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="panel p-4">
+      <div className="text-xs uppercase tracking-wide text-gray-500 mb-2">{title}</div>
+      {children}
+    </div>
+  );
+}
+
 const money = (n: number) => `$${n.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
 
 export default function DashboardPage() {
@@ -89,6 +107,37 @@ export default function DashboardPage() {
               value={overview.average_investigation_time_ms != null ? `${Math.round(overview.average_investigation_time_ms)}ms` : "—"}
             />
             <Metric label="Inference Cost" value={`$${overview.estimated_inference_cost.toFixed(4)}`} sub="illustrative" />
+          </div>
+        )}
+
+        {overview && (
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+            <Panel title="Liquidity">
+              <LineRow label="Available Cash" value={money(overview.liquidity.available_cash)} />
+              <LineRow label="Expected Inflows (30d)" value={money(overview.liquidity.expected_inflows_30d)} />
+              <LineRow label="Expected Outflows (30d)" value={money(overview.liquidity.expected_outflows_30d)} />
+              <LineRow label="Runway" value={overview.liquidity.runway_months != null ? `${overview.liquidity.runway_months} mo` : "—"} />
+            </Panel>
+            <Panel title="Obligations">
+              {Object.entries(overview.obligations.by_type).length === 0 && (
+                <div className="text-sm text-gray-500">No scheduled obligations.</div>
+              )}
+              {Object.entries(overview.obligations.by_type).map(([type, amount]) => (
+                <LineRow key={type} label={type} value={money(amount)} />
+              ))}
+            </Panel>
+            <Panel title="Capital">
+              <LineRow label="Reserved" value={money(overview.capital.reserve)} />
+              <LineRow label="Operating" value={money(overview.capital.operating_cash)} />
+              <LineRow label="Deployable" value={money(overview.capital.deployable_capital)} />
+              <LineRow label="At-Risk" value={money(overview.at_risk_capital)} />
+            </Panel>
+            <Panel title="Financial Health">
+              <LineRow label="Liquidity Score" value={`${overview.financial_health.liquidity_score}`} />
+              <LineRow label="Collection Health" value={`${overview.financial_health.collection_health}`} />
+              <LineRow label="Spend Health" value={`${overview.financial_health.spend_health}`} />
+              <LineRow label="Vendor Concentration" value={`${overview.financial_health.vendor_concentration_score}%`} />
+            </Panel>
           </div>
         )}
 

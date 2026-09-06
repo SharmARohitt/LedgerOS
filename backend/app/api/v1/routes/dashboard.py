@@ -3,6 +3,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.api.v1.deps import get_db
+from app.domain.financial_twin.engine import compute_snapshot, gather_inputs
 from app.models.decisions import Decision
 from app.models.finance import Payment
 from app.models.investigations import ExceptionRecord
@@ -27,7 +28,13 @@ def overview(db: Session = Depends(get_db)) -> dict:
     total_inference_cost = db.query(func.coalesce(func.sum(Trace.total_cost_estimate), 0)).scalar()
     evidence_count = db.query(Span).filter(Span.agent_id == "evidence_worker", Span.status == "SUCCESS").count()
 
+    twin = compute_snapshot(gather_inputs(db))
+
     return {
+        "liquidity": twin["liquidity"],
+        "capital": twin["capital_map"],
+        "obligations": twin["obligations"],
+        "financial_health": twin["financial_health"],
         "transactions_processed": db.query(Payment).count(),
         "total_volume": float(total_volume or 0),
         "exceptions_detected": db.query(ExceptionRecord).count(),

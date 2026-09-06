@@ -21,6 +21,10 @@ export function TopNav() {
 
   const links = [
     { href: "/dashboard", label: "Control Center" },
+    { href: "/financial-twin", label: "Financial Twin" },
+    { href: "/scenarios", label: "Scenario Lab" },
+    { href: "/decision-room", label: "Decision Room" },
+    { href: "/autonomy", label: "Autonomy Control" },
     { href: "/proofs", label: "Proof Center" },
   ];
 

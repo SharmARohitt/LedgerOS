@@ -26,6 +26,7 @@ from app.models.finance import CreditMemo, Invoice  # noqa: E402
 from app.models.investigations import ExceptionRecord, InvestigationCase  # noqa: E402
 from app.models.org import Company, LegalEntity, User  # noqa: E402
 from app.models.parties import Customer  # noqa: E402
+from app.models.treasury import BankAccount, Obligation  # noqa: E402
 
 POLICY_KEY = "revenue_sla_credit"
 POLICY_RULES = {
@@ -34,6 +35,12 @@ POLICY_RULES = {
     "block_new_vendor_without_invoice": True,
     "block_missing_evidence": True,
     "sla_credit_tolerance": 5.00,
+}
+
+CAPITAL_RESERVE_POLICY_KEY = "capital_reserve"
+CAPITAL_RESERVE_RULES = {
+    "minimum_reserve": 3_000_000.00,
+    "operational_buffer": 500_000.00,
 }
 
 SEED_USERS = [
@@ -99,6 +106,8 @@ def seed() -> None:
         db.add(contract)
         db.flush()
 
+        today = datetime.now(timezone.utc).date()
+
         invoice = Invoice(
             id=_gen("inv"),
             invoice_number="INV-4821",
@@ -108,6 +117,7 @@ def seed() -> None:
             currency="USD",
             total_amount=50000.00,
             status="OPEN",
+            due_date=(today + timedelta(days=15)).isoformat(),
         )
         db.add(invoice)
         db.flush()
@@ -121,6 +131,70 @@ def seed() -> None:
             approved_by="Account Manager",
         )
         db.add(credit_memo)
+        db.flush()
+
+        # --- Financial Twin: capital reserve policy, bank accounts, obligations ---
+        capital_policy = Policy(
+            id=_gen("pol"),
+            policy_key=CAPITAL_RESERVE_POLICY_KEY,
+            version="V1.0",
+            policy_type="APPROVAL_THRESHOLD",
+            status="ACTIVE",
+            created_by="admin@ledgeros.dev",
+            effective_date="2025-01-01",
+            description="Minimum cash reserve and operational buffer the Financial Twin must preserve before capital is considered deployable.",
+            rules_json=json.dumps(CAPITAL_RESERVE_RULES),
+        )
+        db.add(capital_policy)
+
+        db.add(
+            BankAccount(
+                id=_gen("bank_acct"),
+                company_id=company.id,
+                legal_entity_id=entity.id,
+                name="Operating Account",
+                account_type="OPERATING",
+                currency="USD",
+                current_balance=2_600_000.00,
+                is_restricted=False,
+            )
+        )
+        db.add(
+            BankAccount(
+                id=_gen("bank_acct"),
+                company_id=company.id,
+                legal_entity_id=entity.id,
+                name="Reserve Account",
+                account_type="RESERVE",
+                currency="USD",
+                current_balance=2_000_000.00,
+                is_restricted=True,
+            )
+        )
+        db.flush()
+
+        obligation_seed = [
+            ("PAYROLL", "Biweekly payroll run", "Payroll", 620_000.00, 12),
+            ("TAX", "Quarterly estimated tax payment", "State & Federal Tax Authority", 310_000.00, 25),
+            ("VENDOR", "Cloud infrastructure invoice", "CloudCore Infrastructure", 380_000.00, 10),
+            ("VENDOR", "Office & facilities services", "OfficeSupply Co", 210_000.00, 20),
+            ("VENDOR", "Data & analytics platform", "DataVendor Inc", 140_000.00, 35),
+            ("DEBT", "Term loan installment", "Silicon Valley Bank Term Loan", 300_000.00, 45),
+            ("SUBSCRIPTION", "SaaS tooling bundle renewal", "SaaS Tools Bundle", 18_000.00, 5),
+        ]
+        for obligation_type, description, counterparty, amount, days_out in obligation_seed:
+            db.add(
+                Obligation(
+                    id=_gen("oblig"),
+                    company_id=company.id,
+                    obligation_type=obligation_type,
+                    description=description,
+                    counterparty=counterparty,
+                    amount=amount,
+                    due_date=(today + timedelta(days=days_out)).isoformat(),
+                    status="SCHEDULED",
+                )
+            )
         db.flush()
 
         # --- 37 historical SLA-credit cases: 36 approved, 1 rejected ---
@@ -198,7 +272,10 @@ def seed() -> None:
             )
 
         db.commit()
-        print("Seed complete: CASE 01 entities + 37 historical decision-memory entries + 4 users.")
+        print(
+            "Seed complete: CASE 01 entities + Financial Twin (bank accounts, obligations, capital reserve policy) "
+            "+ 37 historical decision-memory entries + 4 users."
+        )
         print(f"Login with any of: {[u[0] for u in SEED_USERS]} (password set via SEED_PASSWORD env var)")
     finally:
         db.close()
